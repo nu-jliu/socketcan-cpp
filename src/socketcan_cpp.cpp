@@ -1,4 +1,4 @@
-#include "socketcan_cpp/socketcan_cpp.hpp"
+#include <iostream>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -15,9 +15,12 @@
 
 #include <linux/can/raw.h>
 /* CAN DLC to real data length conversion helpers */
+#include "socketcan_cpp/socketcan_cpp.hpp"
 
-static const unsigned char dlc2len[] = {0, 1, 2, 3, 4, 5, 6, 7,
-  8, 12, 16, 20, 24, 32, 48, 64};
+static const unsigned char dlc2len[] = {
+  0, 1, 2, 3, 4, 5, 6, 7,
+  8, 12, 16, 20, 24, 32, 48, 64
+};
 
 /* get data length from can_dlc with sanitized can_dlc */
 unsigned char can_dlc2len(unsigned char can_dlc)
@@ -25,7 +28,8 @@ unsigned char can_dlc2len(unsigned char can_dlc)
   return dlc2len[can_dlc & 0x0F];
 }
 
-static const unsigned char len2dlc[] = {0, 1, 2, 3, 4, 5, 6, 7, 8,              /* 0 - 8 */
+static const unsigned char len2dlc[] = {
+  0, 1, 2, 3, 4, 5, 6, 7, 8,              /* 0 - 8 */
   9, 9, 9, 9,                                                                   /* 9 - 12 */
   10, 10, 10, 10,                                                               /* 13 - 16 */
   11, 11, 11, 11,                                                               /* 17 - 20 */
@@ -34,7 +38,8 @@ static const unsigned char len2dlc[] = {0, 1, 2, 3, 4, 5, 6, 7, 8,              
   14, 14, 14, 14, 14, 14, 14, 14,                                               /* 33 - 40 */
   14, 14, 14, 14, 14, 14, 14, 14,                                               /* 41 - 48 */
   15, 15, 15, 15, 15, 15, 15, 15,                                               /* 49 - 56 */
-  15, 15, 15, 15, 15, 15, 15, 15};                                              /* 57 - 64 */
+  15, 15, 15, 15, 15, 15, 15, 15
+};                                                /* 57 - 64 */
 
 /* map the sanitized data length to an appropriate data length code */
 unsigned char can_len2dlc(unsigned char len)
@@ -54,8 +59,10 @@ SocketCan::SocketCan()
 {
 }
 SocketCanStatus SocketCan::open(
-  const std::string & can_interface, int32_t read_timeout_ms,
-  SocketMode mode)
+  const std::string & can_interface,
+  int32_t read_timeout_ms,
+  SocketMode mode
+)
 {
   interface_ = can_interface;
   socket_mode_ = mode;
@@ -108,22 +115,24 @@ SocketCanStatus SocketCan::open(
 
   }
 
-//   const int timestamping_flags = (SOF_TIMESTAMPING_SOFTWARE | \
-//     SOF_TIMESTAMPING_RX_SOFTWARE | \
-//     SOF_TIMESTAMPING_RAW_HARDWARE);
+  /*
+  const int timestamping_flags = (SOF_TIMESTAMPING_SOFTWARE | \
+    SOF_TIMESTAMPING_RX_SOFTWARE | \
+    SOF_TIMESTAMPING_RAW_HARDWARE);
 
-//   if (setsockopt(
-//       socket_, SOL_SOCKET, SO_TIMESTAMPING,
-//       &timestamping_flags, sizeof(timestamping_flags)) < 0)
-//   {
-//     perror("setsockopt SO_TIMESTAMPING is not supported by your Linux kernel");
-//   }
+  if (setsockopt(
+      socket_, SOL_SOCKET, SO_TIMESTAMPING,
+      &timestamping_flags, sizeof(timestamping_flags)) < 0)
+  {
+    perror("setsockopt SO_TIMESTAMPING is not supported by your Linux kernel");
+  }
+  */
 
-//   /* disable default receive filter on this RAW socket */
-//   /* This is obsolete as we do not read from the socket at all, but for */
-//   /* this reason we can remove the receive list in the Kernel to save a */
-//   /* little (really a very little!) CPU usage.                          */
-//   setsockopt(s, SOL_CAN_RAW, CAN_RAW_FILTER, NULL, 0);
+  /* disable default receive filter on this RAW socket */
+  /* This is obsolete as we do not read from the socket at all, but for */
+  /* this reason we can remove the receive list in the Kernel to save a */
+  /* little (really a very little!) CPU usage.                          */
+  // setsockopt(s, SOL_CAN_RAW, CAN_RAW_FILTER, NULL, 0);
 
 // LINUX
   struct timeval tv;
@@ -135,8 +144,10 @@ SocketCanStatus SocketCan::open(
     perror("bind");
     return SocketCanStatus::STATUS_BIND_ERROR;
   }
+
   return SocketCanStatus::STATUS_OK;
 }
+
 SocketCanStatus SocketCan::write(const CanFrame & msg)
 {
   struct canfd_frame frame;
@@ -156,8 +167,10 @@ SocketCanStatus SocketCan::write(const CanFrame & msg)
     perror("write");
     return SocketCanStatus::STATUS_WRITE_ERROR;
   }
+
   return SocketCanStatus::STATUS_OK;
 }
+
 SocketCanStatus SocketCan::read(CanFrame & msg)
 {
   struct canfd_frame frame;
@@ -176,15 +189,72 @@ SocketCanStatus SocketCan::read(CanFrame & msg)
 
   return SocketCanStatus::STATUS_OK;
 }
+
+void SocketCan::clear_buffer()
+{
+  struct canfd_frame frame;
+  while (::read(socket_, &frame, CANFD_MTU) > 0) {
+    // do nothing
+  }
+}
+
 SocketCanStatus SocketCan::close()
 {
   ::close(socket_);
   return SocketCanStatus::STATUS_OK;
 }
+
+SocketCanStatus SocketCan::send_can_command(const uint32_t id, const std::vector<uint8_t> & command)
+{
+  std::vector<uint8_t> data(command);
+  const uint8_t crc = get_checksum_(id, data);
+  data.push_back(crc);
+
+  CanFrame frame;
+  frame.id = id;
+  frame.len = static_cast<uint8_t>(data.size());
+  memcpy(frame.data, data.data(), data.size());
+
+  return write(frame);
+}
+
+SocketCanStatus SocketCan::recv_can_response(const uint32_t id, std::vector<uint8_t> & response)
+{
+  CanFrame frame;
+  const SocketCanStatus status = read(frame);
+  if (status != SocketCanStatus::STATUS_OK) {
+    return status;
+  }
+
+  if (frame.id == id) {
+    response.clear();
+    for (uint8_t i = 0; i < frame.len; ++i) {
+      response.push_back(frame.data[i]);
+    }
+  } else {
+    return SocketCanStatus::STATUS_READ_ERROR;
+  }
+
+  return SocketCanStatus::STATUS_OK;
+}
+
 const std::string & SocketCan::interfaceName() const
 {
   return interface_;
 }
+
+uint8_t SocketCan::get_checksum_(const uint32_t id, const std::vector<uint8_t> & data)
+{
+  uint32_t checksum = id;
+
+  for (const auto byte : data) {
+    checksum += byte;
+  }
+
+  checksum &= 0xff;
+  return static_cast<uint8_t>(checksum);
+}
+
 SocketCan::~SocketCan()
 {
   close();

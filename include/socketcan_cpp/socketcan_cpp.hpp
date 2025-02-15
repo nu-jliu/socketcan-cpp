@@ -3,6 +3,7 @@
 
 #include <string>
 #include <linux/can.h>
+#include <vector>
 
 namespace scpp
 {
@@ -65,8 +66,15 @@ public:
   /// \param msg CAN frame to read
   SocketCanStatus read(CanFrame & msg);
 
+  /// \brief Clear the buffer
+  void clear_buffer();
+
   /// \brief Close the socket
   SocketCanStatus close();
+
+  SocketCanStatus send_can_command(const uint32_t id, const std::vector<uint8_t> & command);
+
+  SocketCanStatus recv_can_response(const uint32_t id, std::vector<uint8_t> & response);
 
   /// \brief Get the interface name
   /// \return Interface name
@@ -80,6 +88,8 @@ private:
   int32_t read_timeout_ms_ = 3;
   std::string interface_;
   SocketMode socket_mode_;
+
+  uint8_t get_checksum_(uint32_t id, const std::vector<uint8_t> & data);
 };
 }
 
